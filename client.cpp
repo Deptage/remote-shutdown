@@ -27,24 +27,59 @@ int _write(int cfd, char *buf, int len){
     return 0;
 }
 
+int _read(int cfd, char *buf, int bufsize) {
+    int bytesRead = 0;
+    char *bufPtr = buf;
+    char currentChar;
+    int readResult;
+
+    while (bytesRead < bufsize - 1) {
+        readResult = read(cfd, &currentChar, 1);
+        if (readResult <= 0) {
+            if (readResult == 0) {
+                break;
+            } else {
+                perror("error reading!!!!");
+                break;
+            }
+        }
+        *bufPtr = currentChar;
+        bufPtr++;
+        bytesRead++;
+        if (currentChar == '\n') {
+            break;
+        }
+    }
+
+    *bufPtr = '\0';
+    return bytesRead;
+}
+
 int main(int argc, char* argv[]) {
     if (argc != 3) {
         cerr << "Usage: " << argv[0] << " <Server IP> <Port>" << endl;
         return 1;
     }
-    int cfd=socket(PF_INET,SOCK_STREAM,IPPROTO_TCP);
+
     string serverIP = argv[1];
     int port = stoi(argv[2]);
     struct sockaddr_in server_addr;
     server_addr.sin_family=AF_INET;
+    server_addr.sin_port=htons(port);
     int err = inet_pton(AF_INET, serverIP.c_str(), &(server_addr.sin_addr));
     if(err <= 0) {
         perror("ip address cast error");
         exit(1);
     }
-    server_addr.sin_port=port;
     displaymenu();
     string input;
+    int cfd=socket(PF_INET,SOCK_STREAM,IPPROTO_TCP);
+    err=connect(cfd,(struct sockaddr*)&server_addr,sizeof(server_addr));
+    if(err==-1){
+        perror("error connecting!");
+        exit(1);
+    }
+    cout<<endl<<"Polaczono z serwerem..."<<endl;
     while(true){
         cout<<">";
         getline(cin, input);
@@ -59,36 +94,37 @@ int main(int argc, char* argv[]) {
             args.push_back(arg);
         }
         string command=args[0];
-        if(command!="cn" && command !="st" && command!="sd"){
+        input+='\n';
+        if(command!="cn" && command !="st" && command != "sd"){
             cout<<"Nie ma takiej komendy!"<<endl;
             continue;
-        }else{
-            err=connect(cfd,(struct sockaddr*)&server_addr,sizeof(server_addr));
-            if(err==-1){
-                perror("error connecting!");
-                exit(1);
-            }
-            cout<<"Polaczono z serwerem..."<<endl;
-            input+='\n';
-            _write(cfd,(char*)input.c_str(),input.size()+1);
-            cout<<"Wysylanie komendy.."<<endl;
-            close(cfd);
         }
-        //create new agent
         if(command=="cn"&&args.size()==4){
-            
+            _write(cfd,(char*)input.c_str(),input.size());
+            cout<<"Wysylanie komendy.."<<endl;
+            char response[3];
+            _read(cfd,response,3);
+            if(response[0]=='a') cout<<"Dodano agenta!"<<endl;
         }
         //status
         else if(command=="st"){
-            
+            _write(cfd,(char*)input.c_str(),input.size());
+            cout<<"Wysylanie komendy.."<<endl;
+            char response[3];
+            _read(cfd,response,3);
+            if(response[0]=='a') cout<<"STATUSY TU MAJA BYC POKAZANE"<<endl;
         }
         //shutdown
         else if(command=="sd"){
-            
+            _write(cfd,(char*)input.c_str(),input.size());
+            cout<<"Wysylanie komendy.."<<endl;
+            char response[3];
+            _read(cfd,response,3);
+            if(response[0]=='a') cout<<"Wylaczono agenta"<<endl;
         }
         else cout<<"Nie ma takiej komendy."<<endl;
     }
-
+    close(cfd);
     cout << "Wyjscie." << endl;
     return 0;
 }
