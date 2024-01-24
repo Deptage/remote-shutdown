@@ -105,9 +105,9 @@ int main(int argc, char* argv[]) {
 
 int _write(int cfd, char *buf, int len){
     while (len>0){
-        int i = write(cfd, buf, len);
-        len -= i;
-        buf +=i;
+        int i=write(cfd,buf,len);
+        len-=i;
+        buf+=i;
     }
     return 0;
 }
@@ -118,20 +118,20 @@ int _read(int cfd, char *buf, int bufsize) {
     char currentChar;
     int readResult;
 
-    while (bytesRead < bufsize - 1) {
-        readResult = read(cfd, &currentChar, 1);
-        if (readResult <= 0) {
-            if (readResult == 0) {
+    while (bytesRead<bufsize-1) {
+        readResult = read(cfd,&currentChar,1);
+        if (readResult<=0) {
+            if (readResult==0) {
                 break;
-            } else {
+            }else{
                 perror("error reading!!!!");
                 break;
             }
         }
-        *bufPtr = currentChar;
+        *bufPtr=currentChar;
         bufPtr++;
         bytesRead++;
-        if (currentChar == '\n') {
+        if(currentChar=='\n') {
             break;
         }
     }
