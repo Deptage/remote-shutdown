@@ -40,7 +40,7 @@ void* cthread(void* arg){
     Client* c = (struct Client*)arg;
     cout<<"In thread. Client data:"<<endl<<"cfd: "<<c->cfd<<endl;
     printf("[%lu] new connection from: %s:%d\n", (unsigned long int)pthread_self(), inet_ntoa((struct in_addr)c->caddr.sin_addr), ntohs(c->caddr.sin_port));
-    char msg_to_c[50]={};
+    //char msg_to_c[50]={};
     //Client should have a menu on its machine. It should be able to ask if the client wants to have a new machine installed.
     //Also, it should be able to ask for statuses. We only send raw data. So we have those types of requests:
     //1. Create a new agent    command: "cn <agentname> <adres IP> <port>"
@@ -73,7 +73,7 @@ void* cthread(void* arg){
             istringstream iss(message);
             string command, agentName, ip, portStr;
 
-            
+            //stringstream to perform split on the string like in python
             getline(iss, command, ' ');
             getline(iss, agentName, ' ');
             getline(iss, ip, ' ');
@@ -87,12 +87,12 @@ void* cthread(void* arg){
                 perror("ip address cast error");
                 exit(1);
             }
-
+            //data for the agent
             a.aName = agentName;
             a.agent_addr.sin_port = htons(port);
             a.agent_addr.sin_family = AF_INET;
             c->authorizedAgents.push_back(a);
-            _write(c->cfd,"a\n",2);
+            _write(c->cfd,(char*)"a\n",2);
         }
         if(cmd==1){
             cout<<"Message in cmd: "<<message<<endl;
@@ -103,6 +103,7 @@ void* cthread(void* arg){
             agentName.erase(remove_if(agentName.begin(), agentName.end(), [](unsigned char c) { return !std::isalnum(c); }), agentName.end());
             cout<<"Command: " << command<<", agentname: "<<agentName<<endl;
             int found=0;
+            //we iterate through all agents that are under client's supervision
             for(auto& it : c->authorizedAgents) {
                 //cout<<agentName.size()<<" "<<it.aName.size()<<endl;
                 //for(int ii = 0; ii<max(agentName.size(),it.aName.size());ii++){
@@ -112,17 +113,19 @@ void* cthread(void* arg){
                 //cout << it.aName << endl;
                 if(it.aName == agentName) {
                     found = 1;
+                    //if the agent of the given name is found we send the command to shut it down
                     int afd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
                     connect(afd, (struct sockaddr*)&it.agent_addr, sizeof(it.agent_addr));
-                    _write(afd, "sd\n", 3);
+                    _write(afd, (char*)"sd\n", 3);
                     cout << "Sent shutdown to the agent!" << endl;
-                    _write(c->cfd,"a\n",2);
+                    _write(c->cfd,(char*)"a\n",2);
                     break;
                 }
             }
             if(found==0){
+                //otherwise we send the message to the client that the machine is not found
                 cout<<"No agent found!"<<endl;
-                _write(c->cfd,"f\n",2);
+                _write(c->cfd,(char*)"f\n",2);
             }
         }
         if(cmd == 2) {
@@ -132,29 +135,37 @@ void* cthread(void* arg){
             for(auto& it : c->authorizedAgents) {
                 int afd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
                 it.afd = afd;
+                //we need fcntl to make the socket non blockable. It is because we need to check
+                //if we are able to ping the machine, and we can't wait indefinitetly (infinity time)
+                //to check it
                 int flags = fcntl(afd, F_GETFL, 0);
-                fcntl(afd, F_SETFL, flags | O_NONBLOCK);
+                fcntl(afd,F_SETFL,flags|O_NONBLOCK);
                 connect(afd, (struct sockaddr*)&it.agent_addr, sizeof(it.agent_addr));
 
-                FD_SET(afd, &writefds);
-                if (afd > max_fd) {
-                    max_fd = afd;
+                FD_SET(afd,&writefds);
+                if (afd>max_fd) {
+                    max_fd=afd;
                 }
             }
+            //here we will be using select
+            //struct with timeout
             struct timeval timeout;
-            timeout.tv_sec = 5;  // 5s
+            timeout.tv_sec = 5;
             timeout.tv_usec = 0;
             string response_to_client="";
+            //normal select initialization
+            //we want sockets ready for writing so we can send them a message
             int select_res = select(max_fd + 1, NULL, &writefds, NULL, &timeout);
             if (select_res > 0) {
+                //if fds are found then
                 for (auto& it : c->authorizedAgents) {
                     if (FD_ISSET(it.afd, &writefds)) {
                         int so_error;
                         socklen_t len = sizeof(so_error);
                         getsockopt(it.afd, SOL_SOCKET, SO_ERROR, &so_error, &len);
-
+                        //so getsockopt will tell us if there was an error, if there is not, we write to the socket
                         if (so_error == 0) {
-                            _write(it.afd, "st\n", 3);
+                            _write(it.afd, (char*)"st\n", 3);
                             sleep(2);
                             char st_msg[3];
                             _read(it.afd, st_msg, 3);
@@ -175,11 +186,12 @@ void* cthread(void* arg){
                     }
                 }
             } else if (select_res == 0) {
-                cout << "Timeout" << endl;
+                cout << "timeout!!!" << endl;
             } else {
-                perror("Error in select");
+                perror("select error!!");
             }
             response_to_client+='\n';
+            //we write all data to agent
             _write(c->cfd,(char*)response_to_client.c_str(),response_to_client.length());
         }
     }
@@ -229,9 +241,9 @@ int main(){
 
 int _write(int cfd, char *buf, int len){
     while (len>0){
-        int i = write(cfd, buf, len);
-        len -= i;
-        buf +=i;
+        int i=write(cfd,buf,len);
+        len-=i;
+        buf+=i;
     }
     return 0;
 }
@@ -242,20 +254,20 @@ int _read(int cfd, char *buf, int bufsize) {
     char currentChar;
     int readResult;
 
-    while (bytesRead < bufsize - 1) {
-        readResult = read(cfd, &currentChar, 1);
-        if (readResult <= 0) {
-            if (readResult == 0) {
+    while (bytesRead<bufsize-1) {
+        readResult = read(cfd,&currentChar,1);
+        if (readResult<=0) {
+            if (readResult==0) {
                 break;
-            } else {
+            }else{
                 perror("error reading!!!!");
                 break;
             }
         }
-        *bufPtr = currentChar;
+        *bufPtr=currentChar;
         bufPtr++;
         bytesRead++;
-        if (currentChar == '\n') {
+        if(currentChar=='\n') {
             break;
         }
     }
