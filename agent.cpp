@@ -65,7 +65,7 @@ int main(int argc, char* argv[]) {
             write(cfd,"a\n",2);
             close(cfd);
             close(sfd);
-            //system("shutdown -h now");
+            system("shutdown -h now");
             exit(1);
         }else if(msg.substr(0,2)=="st"){
             std::cout<<"Otrzymano rozkaz status!"<<std::endl;
