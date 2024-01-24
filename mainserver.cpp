@@ -32,42 +32,8 @@ struct Client{
     vector<Agent> authorizedAgents;
 };
 
-int _write(int cfd, char *buf, int len){
-    while (len>0){
-        int i = write(cfd, buf, len);
-        len -= i;
-        buf +=i;
-    }
-    return 0;
-}
-
-int _read(int cfd, char *buf, int bufsize) {
-    int bytesRead = 0;
-    char *bufPtr = buf;
-    char currentChar;
-    int readResult;
-
-    while (bytesRead < bufsize - 1) {
-        readResult = read(cfd, &currentChar, 1);
-        if (readResult <= 0) {
-            if (readResult == 0) {
-                break;
-            } else {
-                perror("error reading!!!!");
-                break;
-            }
-        }
-        *bufPtr = currentChar;
-        bufPtr++;
-        bytesRead++;
-        if (currentChar == '\n') {
-            break;
-        }
-    }
-
-    *bufPtr = '\0';
-    return bytesRead;
-}
+int _write(int cfd, char *buf, int len);
+int _read(int cfd, char *buf, int bufsize);
 
 
 void* cthread(void* arg){
@@ -138,12 +104,12 @@ void* cthread(void* arg){
             cout<<"Command: " << command<<", agentname: "<<agentName<<endl;
             int found=0;
             for(auto& it : c->authorizedAgents) {
-                cout<<agentName.size()<<" "<<it.aName.size()<<endl;
-                for(int ii = 0; ii<max(agentName.size(),it.aName.size());ii++){
-                    cout<<agentName[ii]<<" "<<it.aName[ii]<<endl;
-                }
-                cout << agentName << endl;
-                cout << it.aName << endl;
+                //cout<<agentName.size()<<" "<<it.aName.size()<<endl;
+                //for(int ii = 0; ii<max(agentName.size(),it.aName.size());ii++){
+                //    cout<<agentName[ii]<<" "<<it.aName[ii]<<endl;
+                //}
+                //cout << agentName << endl;
+                //cout << it.aName << endl;
                 if(it.aName == agentName) {
                     found = 1;
                     int afd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -156,6 +122,7 @@ void* cthread(void* arg){
             }
             if(found==0){
                 cout<<"No agent found!"<<endl;
+                _write(c->cfd,"f\n",2);
             }
         }
         if(cmd == 2) {
@@ -177,6 +144,7 @@ void* cthread(void* arg){
             struct timeval timeout;
             timeout.tv_sec = 5;  // 5s
             timeout.tv_usec = 0;
+            string response_to_client="";
             int select_res = select(max_fd + 1, NULL, &writefds, NULL, &timeout);
             if (select_res > 0) {
                 for (auto& it : c->authorizedAgents) {
@@ -191,19 +159,28 @@ void* cthread(void* arg){
                             char st_msg[3];
                             _read(it.afd, st_msg, 3);
                             string response = st_msg;
-                            cout << "Agent's response: " << response << endl;
+                            cout << "Agent's response: " << response;
+                            response_to_client=response_to_client+it.aName+" is on! ";
+                            //char response_buf[30]={};
+                            //strcmp(response_buf,response_to_client.c_str());
+                            
+                            //_write(c->cfd,(char*)response_to_client.c_str(),sizeof(response_to_client)-1);
                         } else {
+                            response_to_client=response_to_client+it.aName+" is off! ";
                             cout << "Failed to connect to agent " << it.aName << endl;
+                            //_write(c->cfd,(char*)response_to_client.c_str(),sizeof(response_to_client)-1);
                         }
                         close(it.afd);
+                        //cout<<response_to_client<<endl;
                     }
                 }
             } else if (select_res == 0) {
-                cout << "Connection timeout." << endl;
+                cout << "Timeout" << endl;
             } else {
                 perror("Error in select");
             }
-            _write(c->cfd, "a\n", 2);
+            response_to_client+='\n';
+            _write(c->cfd,(char*)response_to_client.c_str(),response_to_client.length());
         }
     }
 
@@ -248,4 +225,41 @@ int main(){
         pthread_detach(tid);
     }
     return 0;
+}
+
+int _write(int cfd, char *buf, int len){
+    while (len>0){
+        int i = write(cfd, buf, len);
+        len -= i;
+        buf +=i;
+    }
+    return 0;
+}
+
+int _read(int cfd, char *buf, int bufsize) {
+    int bytesRead = 0;
+    char *bufPtr = buf;
+    char currentChar;
+    int readResult;
+
+    while (bytesRead < bufsize - 1) {
+        readResult = read(cfd, &currentChar, 1);
+        if (readResult <= 0) {
+            if (readResult == 0) {
+                break;
+            } else {
+                perror("error reading!!!!");
+                break;
+            }
+        }
+        *bufPtr = currentChar;
+        bufPtr++;
+        bytesRead++;
+        if (currentChar == '\n') {
+            break;
+        }
+    }
+
+    *bufPtr = '\0';
+    return bytesRead;
 }
