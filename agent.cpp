@@ -45,8 +45,8 @@ int main(int argc, char* argv[]) {
             exit(1);
         }
         char buf[MAX_MSG_SIZE]={};
-        int bytes_read=0;
-        int res;
+        //int bytes_read=0;
+        //int res;
         _read(cfd,buf,MAX_MSG_SIZE);
         //std::cout<<"Przeczytane bajty: "<<bytes_read<<std::endl;
         std::string msg=buf;
@@ -83,20 +83,20 @@ int _read(int cfd, char *buf, int bufsize) {
     char currentChar;
     int readResult;
 
-    while (bytesRead < bufsize - 1) {
-        readResult = read(cfd, &currentChar, 1);
-        if (readResult <= 0) {
-            if (readResult == 0) {
+    while (bytesRead<bufsize-1) {
+        readResult = read(cfd,&currentChar,1);
+        if (readResult<=0) {
+            if (readResult==0) {
                 break;
-            } else {
+            }else{
                 perror("error reading!!!!");
                 break;
             }
         }
-        *bufPtr = currentChar;
+        *bufPtr=currentChar;
         bufPtr++;
         bytesRead++;
-        if (currentChar == '\n') {
+        if(currentChar=='\n') {
             break;
         }
     }
