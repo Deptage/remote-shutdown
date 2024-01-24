@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 #include <sstream>
 #include <algorithm>
+#include <fcntl.h>
 #define MAX_MSG_TO_AGENT_SIZE 10
 #define MAX_MSG_TO_CLIENT_SIZE 50
 #define MAX_CLIENTS 10
@@ -18,7 +19,7 @@ using namespace std;
 struct Agent{
     //int id;
     string aName;
-    //int afd;
+    int afd;
     struct sockaddr_in agent_addr;
     bool isOn;
 };
@@ -73,7 +74,7 @@ void* cthread(void* arg){
     Client* c = (struct Client*)arg;
     cout<<"In thread. Client data:"<<endl<<"cfd: "<<c->cfd<<endl;
     printf("[%lu] new connection from: %s:%d\n", (unsigned long int)pthread_self(), inet_ntoa((struct in_addr)c->caddr.sin_addr), ntohs(c->caddr.sin_port));
-    char msg_to_c[50];
+    char msg_to_c[50]={};
     //Client should have a menu on its machine. It should be able to ask if the client wants to have a new machine installed.
     //Also, it should be able to ask for statuses. We only send raw data. So we have those types of requests:
     //1. Create a new agent    command: "cn <agentname> <adres IP> <port>"
@@ -82,18 +83,18 @@ void* cthread(void* arg){
     //So let's start with creating a new agent I guess. To create a new agent, we need an IPv4 address and also a port. I think we should also be able to name the machine.
 
     //BUT FIRST: LET'S WRITE TO THE CLIENT A BANNER OR STH!
-    strcpy(msg_to_c, "Zuzanna's remote shutdown!\n");
-    _write(c->cfd,msg_to_c,strlen(msg_to_c));
+    //strcpy(msg_to_c, "Zuzanna's remote shutdown!\n");
+    //_write(c->cfd,msg_to_c,strlen(msg_to_c));
     while(1){
         char msg_from_c[MAX_MSG_TO_CLIENT_SIZE]={};
-
-        _read(c->cfd,msg_from_c,MAX_MSG_TO_CLIENT_SIZE);
-
-        //printf("%s",msg_from_c);
+        int what=_read(c->cfd,msg_from_c,MAX_MSG_TO_CLIENT_SIZE);
+        if(what<=0) {
+            close(c->cfd);
+            pthread_exit(0);
+        }
         int cmd=-1;
-
         string message(msg_from_c);//it has endline at the end
-        cout<<message;
+        //cout<<message<<endl;
 
         string command=message.substr(0,2);
         if(command=="cn") cmd=0;
@@ -124,7 +125,8 @@ void* cthread(void* arg){
             a.aName = agentName;
             a.agent_addr.sin_port = htons(port);
             a.agent_addr.sin_family = AF_INET;
-            c->authorizedAgents.push_back(a);  // Assuming c->authorizedAgents is a collection of Agent objects
+            c->authorizedAgents.push_back(a);
+            _write(c->cfd,"a\n",2);
         }
         if(cmd==1){
             cout<<"Message in cmd: "<<message<<endl;
@@ -144,29 +146,64 @@ void* cthread(void* arg){
                 cout << it.aName << endl;
                 if(it.aName == agentName) {
                     found = 1;
-                    // agentStatus(it.agent_addr);
                     int afd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
                     connect(afd, (struct sockaddr*)&it.agent_addr, sizeof(it.agent_addr));
-                    write(afd, "sd\0\n", 4);
+                    _write(afd, "sd\n", 3);
                     cout << "Sent shutdown to the agent!" << endl;
+                    _write(c->cfd,"a\n",2);
                     break;
                 }
             }
             if(found==0){
-                //no agent found!
                 cout<<"No agent found!"<<endl;
             }
         }
         if(cmd == 2) {
-            char st_msg[3];
-            for(auto it : c->authorizedAgents) {
+            fd_set writefds;
+            FD_ZERO(&writefds);
+            int max_fd = 0;
+            for(auto& it : c->authorizedAgents) {
                 int afd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+                it.afd = afd;
+                int flags = fcntl(afd, F_GETFL, 0);
+                fcntl(afd, F_SETFL, flags | O_NONBLOCK);
                 connect(afd, (struct sockaddr*)&it.agent_addr, sizeof(it.agent_addr));
-                _write(afd, "st\0\n", 4);
-                _read(afd,st_msg,3);
-                string response=st_msg;
-                cout<<"Agent's response: "<<response<<endl;
+
+                FD_SET(afd, &writefds);
+                if (afd > max_fd) {
+                    max_fd = afd;
+                }
             }
+            struct timeval timeout;
+            timeout.tv_sec = 5;  // 5s
+            timeout.tv_usec = 0;
+            int select_res = select(max_fd + 1, NULL, &writefds, NULL, &timeout);
+            if (select_res > 0) {
+                for (auto& it : c->authorizedAgents) {
+                    if (FD_ISSET(it.afd, &writefds)) {
+                        int so_error;
+                        socklen_t len = sizeof(so_error);
+                        getsockopt(it.afd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+
+                        if (so_error == 0) {
+                            _write(it.afd, "st\n", 3);
+                            sleep(2);
+                            char st_msg[3];
+                            _read(it.afd, st_msg, 3);
+                            string response = st_msg;
+                            cout << "Agent's response: " << response << endl;
+                        } else {
+                            cout << "Failed to connect to agent " << it.aName << endl;
+                        }
+                        close(it.afd);
+                    }
+                }
+            } else if (select_res == 0) {
+                cout << "Connection timeout." << endl;
+            } else {
+                perror("Error in select");
+            }
+            _write(c->cfd, "a\n", 2);
         }
     }
 
