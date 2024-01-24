@@ -69,29 +69,7 @@ int main() {
         }
         char buf[MAX_MSG_SIZE]={};
         int bytes_read=0;
-        int res;/*
-        while(bytes_read<MAX_MSG_SIZE){
-            /*res=read(cfd,buf+bytes_read,MAX_MSG_SIZE-bytes_read);
-            if(res<1){
-                perror("read error!");
-                break;
-            }
-            buf[bytes_read] = '\0';*/
-            /*
-            for (int i = 0; i < res; ++i) {
-            std::cout << "Read character: " << buf[bytes_read + i];
-            // If the character is printable, display it as a char
-            if (isprint(buf[bytes_read + i])) {
-                std::cout << " ('" << buf[bytes_read + i] << "')";
-            }
-            std::cout << std::endl;
-            }
-            
-            
-            if(buf[bytes_read]=='\n')
-            bytes_read+=res;
-        }
-        */
+        int res;
         _read(cfd,buf,MAX_MSG_SIZE);
         //std::cout<<"Przeczytane bajty: "<<bytes_read<<std::endl;
         std::string msg=buf;
@@ -107,14 +85,14 @@ int main() {
         //if(strcmp(buf,command)==0){
         if(msg.substr(0,2)=="sd"){
             std::cout<<"Otrzymano rozkaz shutdown!"<<std::endl;
-            write(cfd,"a\0\n",3);
+            write(cfd,"a\n",2);
             close(cfd);
             close(sfd);
             //system("shutdown -h now");
             exit(1);
         }else if(msg.substr(0,2)=="st"){
             std::cout<<"Otrzymano rozkaz status!"<<std::endl;
-            write(cfd,"a\0\n",3);
+            write(cfd,"a\n",2);
         }
         close(cfd);
     }
